@@ -1,4 +1,5 @@
 import { solve, type Charge, type Solution } from "./ballistics";
+import type { BarrelId } from "./constants";
 
 /** 任务状态：计划 → 已装填 → 已击发 → 命中/未中 */
 export type MissionStatus = "planned" | "loaded" | "fired" | "hit" | "missed";
@@ -25,6 +26,8 @@ export interface FireMission {
   createdAt: number;
   /** 击发时刻（本地 epoch ms）；null = 尚未击发 */
   firedAt: number | null;
+  /** 手动指定的炮位；null = 按队列位次自动交替 */
+  barrelOverride: BarrelId | null;
 }
 
 export function newMissionId(): string {
@@ -51,6 +54,7 @@ export function createMission(input: Partial<FireMission> = {}): FireMission {
     note: input.note ?? "",
     createdAt: input.createdAt ?? Date.now(),
     firedAt: input.firedAt ?? null,
+    barrelOverride: input.barrelOverride ?? null,
   };
 }
 
@@ -77,3 +81,4 @@ export function missionSpeed(mission: FireMission): number {
 export function isMissionFeasible(mission: FireMission): boolean {
   return missionSolution(mission).warnings.length === 0;
 }
+

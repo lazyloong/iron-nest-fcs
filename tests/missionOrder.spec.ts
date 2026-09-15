@@ -9,6 +9,7 @@ import {
   barrelForIndex,
   orderByMinTraverse,
   orderMissions,
+  resolveBarrel,
   totalTraverseDeg,
 } from "../src/domain/missionOrder";
 
@@ -164,6 +165,12 @@ describe("orderMissions · 未击发置顶 + 三种排序", () => {
 });
 
 describe("双管轮转 · 炮位分配", () => {
+  it("手动指定优先于自动交替", () => {
+    expect(resolveBarrel(null, 0)).toBe("A");
+    expect(resolveBarrel(undefined, 1)).toBe("B");
+    expect(resolveBarrel("B", 0)).toBe("B");
+    expect(resolveBarrel("A", 1)).toBe("A");
+  });
   it("第 1、3、5… 条给 A 管，第 2、4、6… 条给 B 管", () => {
     expect([0, 1, 2, 3, 4, 5].map(barrelForIndex)).toEqual(["A", "B", "A", "B", "A", "B"]);
   });
@@ -203,4 +210,6 @@ describe("orderMissions · traverse 模式", () => {
     expect(ids(orderMissions(list, "traverse"))[2]).toBe("done");
   });
 });
+
+
 

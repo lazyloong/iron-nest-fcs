@@ -51,3 +51,5 @@ export const MAP_ROW_MAX = 10;
 export const MAP_WIDTH_KM =
   (MAP_COL_MAX.charCodeAt(0) - MAP_COL_MIN.charCodeAt(0) + 1) * MAJOR_GRID_KM;
 export const MAP_HEIGHT_KM = MAP_ROW_MAX * MAJOR_GRID_KM;
+/** 炮位标识 */
+export type BarrelId = "A" | "B";

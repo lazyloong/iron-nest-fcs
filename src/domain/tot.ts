@@ -6,7 +6,8 @@ import {
   type FireMission,
 } from "./fireMission";
 
-export type BarrelId = "A" | "B";
+export type { BarrelId } from "./constants";
+import type { BarrelId } from "./constants";
 
 /**
  * 每个任务的「开火时刻」表（怀表秒）。
@@ -210,5 +211,6 @@ export function nextStep(plan: TotPlan): FireStep | null {
     .sort((a, b) => (a.untilSec as number) - (b.untilSec as number));
   return upcoming[0] ?? null;
 }
+
 
 

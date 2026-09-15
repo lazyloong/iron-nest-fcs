@@ -305,3 +305,57 @@ describe("炮位标识与预装面板", () => {
     expect(panel.findAll(".target").map((t) => t.text())).toEqual(["空", "空"]);
   });
 });
+
+
+describe("炮位手动覆盖", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    setActivePinia(createPinia());
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function setup() {
+    const settings = useSettingsStore();
+    settings.soundEnabled = false;
+    const store = useMissionStore();
+    store.addNew({ distanceKm: 6.6, bearingDeg: 20 });
+    return { store, wrapper: mount(MissionQueue) as Wrapper };
+  }
+
+  it("点标识手动指定炮位，再点一次回到自动交替", async () => {
+    const { store, wrapper } = setup();
+    await wrapper.vm.$nextTick();
+
+    const bl = () => wrapper.find(".card").findAll(".bl");
+    const cls = (i: number) => bl()[i]!.classes();
+
+    // 自动：第 1 条 → A
+    expect(cls(0)).toContain("on");
+    expect(cls(1)).not.toContain("on");
+
+    // 点 B → 手动指定 B
+    await bl()[1]!.trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(cls(0)).not.toContain("on");
+    expect(cls(1)).toContain("on");
+    expect(cls(1)).toContain("manual");
+    expect(store.missions[0]!.barrelOverride).toBe("B");
+
+    // 再点 B → 取消，回到自动 A
+    await bl()[1]!.trigger("click");
+    await wrapper.vm.$nextTick();
+    expect(cls(0)).toContain("on");
+    expect(cls(0)).not.toContain("manual");
+    expect(store.missions[0]!.barrelOverride).toBeNull();
+  });
+
+  it("自动交替的标识不带 manual 标记", async () => {
+    const { wrapper } = setup();
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find(".card").findAll(".bl")[0]!.classes()).not.toContain("manual");
+    expect(wrapper.find(".card").findAll(".bl")[0]!.classes()).toContain("on");
+  });
+});

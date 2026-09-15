@@ -6,7 +6,7 @@ import { formatElevation } from '@/domain/format';
 import { addClock, formatClockTime, formatDuration, parseClockTime } from '@/domain/gameClock';
 import { missionElevation, missionFlightTime, type FireMission } from '@/domain/fireMission';
 import { bearingDeg, distanceKm, formatGridRef, parseGridRef } from '@/domain/grid';
-import { barrelForIndex, orderMissions, totalTraverseDeg } from '@/domain/missionOrder';
+import { orderMissions, resolveBarrel, totalTraverseDeg } from '@/domain/missionOrder';
 import { buildTotPlan, type BarrelId } from '@/domain/tot';
 import { useMissionStore, useSettingsStore } from '@/stores';
 
@@ -82,9 +82,14 @@ const pendingMissions = computed(() =>
  */
 const barrelByMission = computed(() => {
   const map = new Map<string, BarrelId>();
-  pendingMissions.value.forEach((m, i) => map.set(m.id, barrelForIndex(i)));
+  pendingMissions.value.forEach((m, i) => map.set(m.id, resolveBarrel(m.barrelOverride, i)));
   return map;
 });
+
+/** 点炮位标识：指定该管；再点一次取消，回到自动交替 */
+function toggleBarrel(mission: FireMission, which: BarrelId): void {
+  store.update(mission.id, { barrelOverride: mission.barrelOverride === which ? null : which });
+}
 
 /** 一趟扫完的总回转角（按目标逐个算） */
 const traverseTotal = computed(() =>
@@ -375,8 +380,8 @@ function statusText(status: FireMission['status']): string {
           <span class="st" :class="m.status">{{ statusText(m.status) }}</span>
           <span class="ops">
 
-            <span class="bl" :class="{ on: barrelByMission.get(m.id) === 'A' }" title="A 管负责这一发">A</span>
-            <span class="bl" :class="{ on: barrelByMission.get(m.id) === 'B' }" title="B 管负责这一发">B</span>
+<span v-if="isPending(m)" class="bl" :class="{ on: barrelByMission.get(m.id) === 'A', manual: m.barrelOverride === 'A' }" :title="m.barrelOverride === 'A' ? '手动指定 A 管 · 点击取消' : '点击指定 A 管'" @click.stop="toggleBarrel(m, 'A')">A</span>
+<span v-if="isPending(m)" class="bl" :class="{ on: barrelByMission.get(m.id) === 'B', manual: m.barrelOverride === 'B' }" :title="m.barrelOverride === 'B' ? '手动指定 B 管 · 点击取消' : '点击指定 B 管'" @click.stop="toggleBarrel(m, 'B')">B</span>
 
             <template v-if="m.status === 'planned'">
               <button type="button" class="firebtn" @click.stop="store.markFired(m.id)">击发</button>
@@ -491,6 +496,8 @@ function statusText(status: FireMission['status']): string {
 
 .bl {
   display: inline-block;
+  cursor: pointer;
+  user-select: none;
   min-width: 18px;
   text-align: center;
   border: 1px solid var(--line);
@@ -505,6 +512,13 @@ function statusText(status: FireMission['status']): string {
   border-color: var(--ok);
   color: var(--ok);
   font-weight: 600;
+}
+
+/* 手动指定：琥珀色，跟自动交替区分开 */
+.bl.manual.on {
+  background: #2a1f10;
+  border-color: var(--amber);
+  color: var(--amber);
 }
 
 .empty {
@@ -741,3 +755,4 @@ select:focus {
   font-size: 12px;
 }
 </style>
+

@@ -1,3 +1,4 @@
+import type { BarrelId } from "./constants";
 import type { FireMission } from "./fireMission";
 
 /** 队列排序方式 */
@@ -93,8 +94,16 @@ export function totalTraverseDeg<T>(
  * 转向与其他系统独立，装填可以与转向并行，所以双管不改变最优顺序，
  * 它改变的是你能提前把接下来两发都装好。
  */
-export function barrelForIndex(index: number): 'A' | 'B' {
-  return index % 2 === 0 ? 'A' : 'B';
+export function barrelForIndex(index: number): BarrelId {
+  return index % 2 === 0 ? "A" : "B";
+}
+
+/**
+ * 实际炮位：**手动指定优先，否则按位次自动交替**。
+ * 手动指定存在任务里，会随 localStorage 一起持久化。
+ */
+export function resolveBarrel(override: BarrelId | null | undefined, index: number): BarrelId {
+  return override ?? barrelForIndex(index);
 }
 export interface OrderOptions {
   /** 每个任务的开火时刻（秒），'time' 模式用 */
@@ -154,4 +163,5 @@ export function orderMissions(
 
   return [...orderedPending, ...done];
 }
+
 
