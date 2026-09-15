@@ -2,6 +2,7 @@ import { mount, type VueWrapper } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import MissionQueue from "../src/components/MissionQueue.vue";
+import BarrelPanel from "../src/components/BarrelPanel.vue";
 import { useMissionStore, useSettingsStore } from "../src/stores";
 
 /**
@@ -225,5 +226,82 @@ describe("MissionQueue · 排序", () => {
       .findAll("button")
       .map((b) => b.text());
     expect(ops).not.toContain("▲");
+  });
+});
+
+describe("炮位标识与预装面板", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    setActivePinia(createPinia());
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function setup() {
+    const settings = useSettingsStore();
+    settings.soundEnabled = false;
+    const store = useMissionStore();
+    store.addNew({ distanceKm: 6.6, bearingDeg: 20 });
+    return { settings, store, wrapper: mount(MissionQueue) as Wrapper };
+  }
+
+  /** 每张卡上的 [A, B] 两个标识及其高亮状态 */
+  function badges(wrapper: Wrapper) {
+    return wrapper.findAll(".card").map((card) =>
+      card.findAll(".bl").map((b) => ({ text: b.text(), on: b.classes().includes("on") })),
+    );
+  }
+
+  it("按队列顺序轮转：第 1 条 A、第 2 条 B、第 3 条 A", async () => {
+    const { store, wrapper } = setup();
+    store.addNew({ distanceKm: 8, bearingDeg: 350 });
+    store.addNew({ distanceKm: 9, bearingDeg: 30 });
+    await wrapper.vm.$nextTick();
+
+    const b = badges(wrapper);
+    expect(b).toHaveLength(3);
+    expect(b[0]).toEqual([
+      { text: "A", on: true },
+      { text: "B", on: false },
+    ]);
+    expect(b[1]).toEqual([
+      { text: "A", on: false },
+      { text: "B", on: true },
+    ]);
+    expect(b[2]).toEqual([
+      { text: "A", on: true },
+      { text: "B", on: false },
+    ]);
+  });
+
+  it("打掉第一条后，后面的自动往前顶", async () => {
+    const { store, wrapper } = setup();
+    store.addNew({ distanceKm: 8, bearingDeg: 350 });
+    await wrapper.vm.$nextTick();
+
+    store.markFired(store.missions[0]!.id);
+    await wrapper.vm.$nextTick();
+
+    const b = badges(wrapper);
+    // 原来的第 2 条变成待击发序列的第 1 条 → A 管
+    expect(b[0]![0]).toEqual({ text: "A", on: true });
+    expect(b[0]![1]).toEqual({ text: "B", on: false });
+  });
+
+  it("双炮位面板自动填入队列前两条", async () => {
+    const { store } = setup();
+    store.addNew({ distanceKm: 8, bearingDeg: 350 });
+    const panel = mount(BarrelPanel);
+    await panel.vm.$nextTick();
+
+    expect(panel.findAll(".target").map((t) => t.text())).toEqual(["目标 1", "目标 2"]);
+  });
+
+  it("队列为空时炮位面板显示空", () => {
+    setActivePinia(createPinia());
+    const panel = mount(BarrelPanel);
+    expect(panel.findAll(".target").map((t) => t.text())).toEqual(["空", "空"]);
   });
 });

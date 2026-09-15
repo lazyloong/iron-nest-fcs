@@ -6,12 +6,11 @@ import { formatElevation } from '@/domain/format';
 import { addClock, formatClockTime, formatDuration, parseClockTime } from '@/domain/gameClock';
 import { missionElevation, missionFlightTime, type FireMission } from '@/domain/fireMission';
 import { bearingDeg, distanceKm, formatGridRef, parseGridRef } from '@/domain/grid';
-import { groupIntoStops, orderMissions, totalTraverseDeg } from '@/domain/missionOrder';
+import { barrelForIndex, orderMissions, totalTraverseDeg } from '@/domain/missionOrder';
 import { buildTotPlan, type BarrelId } from '@/domain/tot';
-import { useBarrelStore, useMissionStore, useSettingsStore } from '@/stores';
+import { useMissionStore, useSettingsStore } from '@/stores';
 
 const store = useMissionStore();
-const barrelStore = useBarrelStore();
 const settings = useSettingsStore();
 
 /* ---------------------- 本地节拍：驱动怀表与倒计时 ---------------------- */
@@ -75,23 +74,17 @@ const pendingMissions = computed(() =>
 );
 
 
-/* ----------------------- 双管预装 ----------------------- */
+/* --------------------------- 双管轮转 --------------------------- */
 
 /**
- * 齐射机会：方位相近的两条能在一个方位上各打一发。
- * 只作信息标注，不参与排序（双管省的是装填，不是转向）。
+ * 炮位标识：待击发序列第 1、3、5… 条给 A 管，第 2、4、6… 条给 B 管。
+ * 只表示「哪根管子负责这一发」，不影响射击顺序。
  */
-const firingStops = computed(() =>
-  settings.sortMode === 'traverse'
-    ? groupIntoStops(
-      pendingMissions.value.filter((x) => x.bearingDeg !== null),
-      (x) => x.bearingDeg as number,
-    )
-    : [],
-);
-
-/** 齐射组数 */
-const volleyCount = computed(() => firingStops.value.filter((s) => s.members.length === 2).length);
+const barrelByMission = computed(() => {
+  const map = new Map<string, BarrelId>();
+  pendingMissions.value.forEach((m, i) => map.set(m.id, barrelForIndex(i)));
+  return map;
+});
 
 /** 一趟扫完的总回转角（按目标逐个算） */
 const traverseTotal = computed(() =>
@@ -102,24 +95,6 @@ const traverseTotal = computed(() =>
   ),
 );
 
-/** missionId -> 同一停靠点里的搭档 id */
-const volleyPartner = computed(() => {
-  const map = new Map<string, string>();
-  for (const s of firingStops.value) {
-    if (s.members.length === 2) {
-      map.set(s.members[0]!.id, s.members[1]!.id);
-      map.set(s.members[1]!.id, s.members[0]!.id);
-    }
-  }
-  return map;
-});
-
-function partnerLabel(id: string): string {
-  const pid = volleyPartner.value.get(id);
-  if (pid === undefined) return '';
-  const p = store.missions.find((x) => x.id === pid);
-  return p ? p.label || p.gridRef || '未命名' : '';
-}
 
 /* --------------------------- 手动拖拽排序 --------------------------- */
 
@@ -276,19 +251,6 @@ function untilText(missionId: string): string {
   return formatDuration(u);
 }
 
-function loadInto(barrel: BarrelId, mission: FireMission): void {
-  barrelStore.loadMission(barrel, mission);
-}
-
-/** 击发：同时把装了这个任务的炮管标记为已击发 */
-function fireMission(mission: FireMission): void {
-  store.markFired(mission.id);
-  for (const b of ['A', 'B'] as const) {
-    if (barrelStore.barrels[b].missionId === mission.id && barrelStore.barrels[b].state === 'ready') {
-      barrelStore.markFired(b);
-    }
-  }
-}
 
 function statusText(status: FireMission['status']): string {
   return status === 'planned'
@@ -336,9 +298,6 @@ function statusText(status: FireMission['status']): string {
         <span v-if="settings.sortMode === 'traverse' && pendingMissions.length > 1" class="tt">
           总回转 {{ traverseTotal.toFixed(0) }}°
         </span>
-        <span v-if="settings.sortMode === 'traverse' && volleyCount > 0" class="tt">
-          · 可齐射 {{ volleyCount }} 组
-        </span>
       </span>
     </div>
 
@@ -360,9 +319,6 @@ function statusText(status: FireMission['status']): string {
         <div class="r1">
           <input class="lab" title="目标" :value="m.label"
             @input="store.update(m.id, { label: ($event.target as HTMLInputElement).value })" />
-          <span v-if="volleyPartner.has(m.id)" class="volley" :title="'与「' + partnerLabel(m.id) + '」同一次停靠，两管齐射'">
-            齐射
-          </span>
           <span class="kv">
             <i>仰角</i>
             <b class="hi">{{ formatElevation(missionElevation(m), settings.precision) }}°</b>
@@ -419,10 +375,11 @@ function statusText(status: FireMission['status']): string {
           <span class="st" :class="m.status">{{ statusText(m.status) }}</span>
           <span class="ops">
 
+            <span class="bl" :class="{ on: barrelByMission.get(m.id) === 'A' }" title="A 管负责这一发">A</span>
+            <span class="bl" :class="{ on: barrelByMission.get(m.id) === 'B' }" title="B 管负责这一发">B</span>
+
             <template v-if="m.status === 'planned'">
-              <button type="button" title="装填 A 管" @click.stop="loadInto('A', m)">A</button>
-              <button type="button" title="装填 B 管" @click.stop="loadInto('B', m)">B</button>
-              <button type="button" class="firebtn" @click.stop="fireMission(m)">击发</button>
+              <button type="button" class="firebtn" @click.stop="store.markFired(m.id)">击发</button>
             </template>
             <template v-else-if="m.status === 'fired'">
               <button type="button" @click.stop="store.markResult(m.id, true)">命中</button>
@@ -532,14 +489,22 @@ function statusText(status: FireMission['status']): string {
   font-variant-numeric: tabular-nums;
 }
 
-.volley {
-  background: #2a1f10;
-  border: 1px solid var(--amber);
+.bl {
+  display: inline-block;
+  min-width: 18px;
+  text-align: center;
+  border: 1px solid var(--line);
   border-radius: 3px;
-  color: var(--amber);
-  font-size: 10px;
-  letter-spacing: 1px;
-  padding: 1px 5px;
+  color: #4a5a4a;
+  font-size: 11px;
+  padding: 3px 6px;
+}
+
+.bl.on {
+  background: #1f3020;
+  border-color: var(--ok);
+  color: var(--ok);
+  font-weight: 600;
 }
 
 .empty {

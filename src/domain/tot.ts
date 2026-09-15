@@ -8,6 +8,19 @@ import {
 
 export type BarrelId = "A" | "B";
 
+/**
+ * 每个任务的「开火时刻」表（怀表秒）。
+ * 排序与炮位面板都只要这个静态值，不需要当前时间。
+ */
+export function fireClockSecMap(missions: readonly FireMission[]): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const m of missions) {
+    if (m.impactClockSec === null) continue;
+    map.set(m.id, addClock(m.impactClockSec, -missionFlightTime(m)));
+  }
+  return map;
+}
+
 export interface FireStep {
   missionId: string;
   label: string;
@@ -197,3 +210,5 @@ export function nextStep(plan: TotPlan): FireStep | null {
     .sort((a, b) => (a.untilSec as number) - (b.untilSec as number));
   return upcoming[0] ?? null;
 }
+
+

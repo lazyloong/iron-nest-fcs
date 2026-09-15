@@ -6,7 +6,7 @@ import {
 } from "../src/domain/fireMission";
 import {
   angularDistance,
-  groupIntoStops,
+  barrelForIndex,
   orderByMinTraverse,
   orderMissions,
   totalTraverseDeg,
@@ -163,52 +163,19 @@ describe("orderMissions · 未击发置顶 + 三种排序", () => {
   });
 });
 
-describe("双管预装 · 停靠点", () => {
-  const angle = (x: { a: number }) => x.a;
-
-  it("同方位两两配对", () => {
-    const stops = groupIntoStops([{ a: 0 }, { a: 1 }, { a: 90 }], angle, 2);
-    expect(stops.map((s) => s.members.map((m) => m.a))).toEqual([[0, 1], [90]]);
-    expect(stops[0]!.bearingDeg).toBeCloseTo(0.5, 6);
+describe("双管轮转 · 炮位分配", () => {
+  it("第 1、3、5… 条给 A 管，第 2、4、6… 条给 B 管", () => {
+    expect([0, 1, 2, 3, 4, 5].map(barrelForIndex)).toEqual(["A", "B", "A", "B", "A", "B"]);
   });
 
-  it("超容差不配对", () => {
-    const stops = groupIntoStops([{ a: 0 }, { a: 5 }, { a: 10 }], angle, 2);
-    expect(stops.map((s) => s.members.length)).toEqual([1, 1, 1]);
-  });
-
-  it("四点配成两组", () => {
-    const stops = groupIntoStops(
-      [{ a: 0 }, { a: 1 }, { a: 2 }, { a: 3 }],
-      angle,
-      2,
-    );
-    expect(stops.map((s) => s.members.length)).toEqual([2, 2]);
-  });
-
-  it("跨零点也能配对，中值不回绕", () => {
-    const stops = groupIntoStops([{ a: 359 }, { a: 0 }], angle, 2);
-    expect(stops).toHaveLength(1);
-    expect(stops[0]!.bearingDeg).toBeCloseTo(359.5, 6);
-  });
-
-  it("空集不出错", () => {
-    expect(groupIntoStops([], angle, 2)).toEqual([]);
-  });
-
-  it("配对只合并方位，省的是装填不是转向", () => {
-    const stops = groupIntoStops([{ a: 350 }, { a: 10 }, { a: 11 }], angle, 2);
-    expect(stops.map((s) => s.members.map((m) => m.a))).toEqual([
-      [10, 11],
-      [350],
-    ]);
-    // 组内两目标本来就只差 1 度 —— 转向省不了多少，
-    // 真正省下的是「一次装填」（两发可以提前都装好）
-    expect(angularDistance(10, 11)).toBe(1);
+  it("按待击发序列的位次轮转，与射击顺序无关", () => {
+    expect(barrelForIndex(0)).toBe("A");
+    expect(barrelForIndex(1)).toBe("B");
+    expect(barrelForIndex(2)).toBe("A");
   });
 });
 
-describe("orderMissions · traverse 模式内建双管配对", () => {
+describe("orderMissions · traverse 模式", () => {
   it("同方位的两条被排在一起", () => {
     const list = [
       m("far", "planned", 200),
@@ -236,3 +203,4 @@ describe("orderMissions · traverse 模式内建双管配对", () => {
     expect(ids(orderMissions(list, "traverse"))[2]).toBe("done");
   });
 });
+

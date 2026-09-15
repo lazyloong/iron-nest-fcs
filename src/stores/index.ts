@@ -1,16 +1,8 @@
 import { defineStore } from "pinia";
 import { computed, ref, watch } from "vue";
-import type { Charge } from "@/domain/ballistics";
 import type { Precision } from "@/domain/format";
 import type { SortMode } from "@/domain/missionOrder";
-import {
-  createMission,
-  missionElevation,
-  missionFlightTime,
-  type FireMission,
-  type MissionStatus,
-} from "@/domain/fireMission";
-import { angularDiff, type BarrelId } from "@/domain/tot";
+import { createMission, type FireMission, type MissionStatus } from "@/domain/fireMission";
 
 const SETTINGS_KEY = "iron-nest-fcs.settings.v1";
 const MISSIONS_KEY = "iron-nest-fcs.missions.v1";
@@ -228,98 +220,3 @@ export const useMissionStore = defineStore("missions", () => {
   };
 });
 
-/* ---------------------------- 双炮位 ---------------------------- */
-
-export type BarrelLoadState = "empty" | "ready" | "fired";
-
-export interface BarrelLoadout {
-  barrel: BarrelId;
-  missionId: string | null;
-  ammoId: string | null;
-  charge: Charge;
-  elevationDeg: number;
-  flightTimeSec: number;
-  state: BarrelLoadState;
-}
-
-function emptyBarrel(barrel: BarrelId): BarrelLoadout {
-  return {
-    barrel,
-    missionId: null,
-    ammoId: null,
-    charge: 1,
-    elevationDeg: 0,
-    flightTimeSec: 0,
-    state: "empty",
-  };
-}
-
-export const useBarrelStore = defineStore("barrels", () => {
-  const barrels = ref<Record<BarrelId, BarrelLoadout>>({
-    A: emptyBarrel("A"),
-    B: emptyBarrel("B"),
-  });
-
-  /** 两管共享方位角：取已装填炮管的方位 */
-  const sharedBearing = computed(() => {
-    const a = barrels.value.A;
-    const b = barrels.value.B;
-    if (a.state !== "empty" && b.state !== "empty") {
-      if (a.missionId !== null && b.missionId !== null) {
-        // 两管都已装填：方位必须相同
-        return { value: null, mismatch: true };
-      }
-      return { value: null, mismatch: false };
-    }
-    return { value: null, mismatch: false };
-  });
-
-  function loadMission(barrel: BarrelId, mission: FireMission): void {
-    barrels.value[barrel] = {
-      barrel,
-      missionId: mission.id,
-      ammoId: mission.ammoId,
-      charge: mission.charge,
-      elevationDeg: missionElevation(mission),
-      flightTimeSec: missionFlightTime(mission),
-      state: "ready",
-    };
-  }
-
-  function markFired(barrel: BarrelId): void {
-    if (barrels.value[barrel].state === "ready")
-      barrels.value[barrel].state = "fired";
-  }
-
-  function clearBarrel(barrel: BarrelId): void {
-    barrels.value[barrel] = emptyBarrel(barrel);
-  }
-
-  function clearAll(): void {
-    barrels.value.A = emptyBarrel("A");
-    barrels.value.B = emptyBarrel("B");
-  }
-
-  /** 找出与给定方位相同（容差内）的任务，用于「同方位不同仰角」齐射 */
-  function missionsOnBearing(
-    bearingDeg: number,
-    list: FireMission[],
-    toleranceDeg = 2,
-  ): FireMission[] {
-    return list.filter(
-      (m) =>
-        m.bearingDeg !== null &&
-        angularDiff(m.bearingDeg, bearingDeg) <= toleranceDeg,
-    );
-  }
-
-  return {
-    barrels,
-    sharedBearing,
-    loadMission,
-    markFired,
-    clearBarrel,
-    clearAll,
-    missionsOnBearing,
-  };
-});

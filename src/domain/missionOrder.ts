@@ -84,65 +84,18 @@ export function totalTraverseDeg<T>(
   return total;
 }
 
-/* ----------------------- 双管预装：停靠点 ----------------------- */
+/* --------------------------- 双管轮转 --------------------------- */
 
 /**
- * 一个「齐射组」：炮塔在一个方位上，两管各打一发。
+ * 双管轮转分配：待击发序列里第 1、3、5… 条给 A 管，第 2、4、6… 条给 B 管。
  *
- * 注意：这只描述**能否齐射**，不是排序依据。
- * 双管省的是装填时间，省不了转向与仰角；而组内目标本来方位就几乎相同，
- * 所以它对最优射击顺序没有实质影响。
+ * 这只是「哪根管子负责这一发」的排班，**不影响射击顺序**：
+ * 转向与其他系统独立，装填可以与转向并行，所以双管不改变最优顺序，
+ * 它改变的是你能提前把接下来两发都装好。
  */
-export interface FiringStop<T> {
-  /** 该组的中值方位 */
-  bearingDeg: number;
-  /** 该组要打的目标，1 或 2 个 */
-  members: T[];
+export function barrelForIndex(index: number): 'A' | 'B' {
+  return index % 2 === 0 ? 'A' : 'B';
 }
-
-/** 两个角的环形中值（只在夹角很小时使用） */
-function midAngle(a: number, b: number): number {
-  const d = ((b - a + 540) % 360) - 180; // 有符号最短差
-  return norm360(a + d / 2);
-}
-
-/**
- * 把目标按方位角聚成组：相邻且夹角不超过容差的**两两配对**。
- *
- * 两管共享方位角，所以一个方位上最多打两发（一管一发）。
- * 配对的意义是「**能不能省掉一次装填**」——两发可以提前都装好，
- * 而不是省转向（组内方位本来几乎相同）。
- */
-export function groupIntoStops<T>(
-  items: readonly T[],
-  angleOf: (item: T) => number,
-  toleranceDeg = 2,
-): FiringStop<T>[] {
-  if (items.length === 0) return [];
-
-  const sorted = items
-    .map((item, i) => ({ item, i, a: norm360(angleOf(item)) }))
-    .sort((x, y) => x.a - y.a || x.i - y.i);
-
-  const stops: FiringStop<T>[] = [];
-  let k = 0;
-  while (k < sorted.length) {
-    const cur = sorted[k]!;
-    const next = sorted[k + 1];
-    if (next !== undefined && angularDistance(cur.a, next.a) <= toleranceDeg) {
-      stops.push({
-        bearingDeg: midAngle(cur.a, next.a),
-        members: [cur.item, next.item],
-      });
-      k += 2;
-    } else {
-      stops.push({ bearingDeg: cur.a, members: [cur.item] });
-      k += 1;
-    }
-  }
-  return stops;
-}
-
 export interface OrderOptions {
   /** 每个任务的开火时刻（秒），'time' 模式用 */
   fireClockSecById?: ReadonlyMap<string, number>;
@@ -201,3 +154,4 @@ export function orderMissions(
 
   return [...orderedPending, ...done];
 }
+
