@@ -3,7 +3,8 @@ import { computed } from "vue";
 import { AMMO_LIST } from "@/domain/ammo";
 import { formatElevation } from "@/domain/format";
 import { missionElevation, missionFlightTime, type FireMission } from "@/domain/fireMission";
-import { orderMissions } from "@/domain/missionOrder";
+import type { BarrelId } from "@/domain/constants";
+import { assignBarrels, orderMissions } from "@/domain/missionOrder";
 import { fireClockSecMap } from "@/domain/tot";
 import { useMissionStore, useSettingsStore } from "@/stores";
 
@@ -18,14 +19,27 @@ const pending = computed(() => {
   return ordered.filter((m) => m.status === "planned" || m.status === "loaded");
 });
 
+interface BarrelSlot {
+  id: BarrelId;
+  /** 在待击发序列里的位次；空槽为 0 */
+  seq: number;
+  mission: FireMission | null;
+}
+
 /**
- * 双管轮转：待击发序列第 1 条装 A 管、第 2 条装 B 管。
- * 面板自动跟随队列，不需要手动装填 —— 打完一发，序列往前挪，面板跟着变。
+ * 炮位占用：**按每个任务实际分配到的炮位取**。
+ * 用的是和卡片标识同一个 assignBarrels（手动优先、其余交替填补），
+ * 所以点卡片上的 A/B 标识，这里会实时跟着变。
  */
-const barrels = computed(() => [
-  { id: "A" as const, seq: 1, mission: pending.value[0] ?? null },
-  { id: "B" as const, seq: 2, mission: pending.value[1] ?? null },
-]);
+const barrels = computed<BarrelSlot[]>(() => {
+  const list = pending.value;
+  const assigned = assignBarrels(list.map((m) => m.barrelOverride));
+  const slot = (id: BarrelId): BarrelSlot => {
+    const i = assigned.indexOf(id);
+    return i < 0 ? { id, seq: 0, mission: null } : { id, seq: i + 1, mission: list[i]! };
+  };
+  return [slot("A"), slot("B")];
+});
 
 function ammoName(id: string | null): string {
   if (id === null) return "未选弹";
@@ -42,7 +56,7 @@ function labelOf(m: FireMission): string {
     <div v-for="b in barrels" :key="b.id" class="barrel" :class="{ empty: b.mission === null }">
       <div class="top">
         <span class="id">{{ b.id }} 管</span>
-        <span class="seq">第 {{ b.seq }} 发</span>
+        <span v-if="b.mission" class="seq">第 {{ b.seq }} 发</span>
       </div>
 
       <template v-if="b.mission">
@@ -125,3 +139,6 @@ function labelOf(m: FireMission): string {
   font-size: 11px;
 }
 </style>
+
+
+

@@ -6,7 +6,7 @@ import { formatElevation } from '@/domain/format';
 import { addClock, formatClockTime, formatDuration, parseClockTime } from '@/domain/gameClock';
 import { missionElevation, missionFlightTime, type FireMission } from '@/domain/fireMission';
 import { bearingDeg, distanceKm, formatGridRef, parseGridRef } from '@/domain/grid';
-import { orderMissions, resolveBarrel, totalTraverseDeg } from '@/domain/missionOrder';
+import { assignBarrels, orderMissions, totalTraverseDeg } from '@/domain/missionOrder';
 import { buildTotPlan, type BarrelId } from '@/domain/tot';
 import { useMissionStore, useSettingsStore } from '@/stores';
 
@@ -81,8 +81,10 @@ const pendingMissions = computed(() =>
  * 只表示「哪根管子负责这一发」，不影响射击顺序。
  */
 const barrelByMission = computed(() => {
+  const list = pendingMissions.value;
+  const assigned = assignBarrels(list.map((m) => m.barrelOverride));
   const map = new Map<string, BarrelId>();
-  pendingMissions.value.forEach((m, i) => map.set(m.id, resolveBarrel(m.barrelOverride, i)));
+  list.forEach((m, i) => map.set(m.id, assigned[i]!));
   return map;
 });
 
@@ -755,4 +757,5 @@ select:focus {
   font-size: 12px;
 }
 </style>
+
 

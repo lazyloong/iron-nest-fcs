@@ -359,3 +359,59 @@ describe("炮位手动覆盖", () => {
     expect(wrapper.find(".card").findAll(".bl")[0]!.classes()).toContain("on");
   });
 });
+
+describe("炮位面板跟随手动指定", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    setActivePinia(createPinia());
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("手动把第 1 条指定给 B 管，面板立刻换过来", async () => {
+    const settings = useSettingsStore();
+    settings.soundEnabled = false;
+    const store = useMissionStore();
+    store.addNew({ distanceKm: 6.6, bearingDeg: 20 });
+    store.addNew({ distanceKm: 8, bearingDeg: 350 });
+
+    const panel = mount(BarrelPanel);
+    await panel.vm.$nextTick();
+    const targets = () => panel.findAll(".target").map((t) => t.text());
+
+    // 自动：第 1 条 → A，第 2 条 → B
+    expect(targets()).toEqual(["目标 1", "目标 2"]);
+
+    // 把第 1 条手动指定给 B 管
+    store.update(store.missions[0]!.id, { barrelOverride: "B" });
+    await panel.vm.$nextTick();
+
+    // A 管空出来 → 拿第 2 条；B 管拿第 1 条
+    expect(targets()).toEqual(["目标 2", "目标 1"]);
+
+    // 取消手动 → 回到自动
+    store.update(store.missions[0]!.id, { barrelOverride: null });
+    await panel.vm.$nextTick();
+    expect(targets()).toEqual(["目标 1", "目标 2"]);
+  });
+
+  it("两条都指定给同一根管时，另一根显示空", async () => {
+    const settings = useSettingsStore();
+    settings.soundEnabled = false;
+    const store = useMissionStore();
+    store.addNew({ distanceKm: 6.6, bearingDeg: 20 });
+    store.addNew({ distanceKm: 8, bearingDeg: 350 });
+    const panel = mount(BarrelPanel);
+    await panel.vm.$nextTick();
+
+    store.update(store.missions[0]!.id, { barrelOverride: "A" });
+    store.update(store.missions[1]!.id, { barrelOverride: "A" });
+    await panel.vm.$nextTick();
+
+    const targets = panel.findAll(".target").map((t) => t.text());
+    expect(targets[0]).toBe("目标 1");
+    expect(targets[1]).toBe("空");
+  });
+});

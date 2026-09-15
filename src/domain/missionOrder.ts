@@ -99,11 +99,25 @@ export function barrelForIndex(index: number): BarrelId {
 }
 
 /**
- * 实际炮位：**手动指定优先，否则按位次自动交替**。
- * 手动指定存在任务里，会随 localStorage 一起持久化。
+ * 批量分配炮位。规则：
+ *  - 手动指定的**直接采用，且不消耗轮转**
+ *  - 没指定的按顺序交替填（A、B、A、B…）
+ *
+ * 这样「把第 1 条手动改成 B 管」之后，第 2 条会自动补到 A 管，
+ * 而不是两条挤在 B 管、A 管空着。
  */
-export function resolveBarrel(override: BarrelId | null | undefined, index: number): BarrelId {
-  return override ?? barrelForIndex(index);
+export function assignBarrels(overrides: readonly (BarrelId | null | undefined)[]): BarrelId[] {
+  const out: BarrelId[] = [];
+  let cursor: BarrelId = "A";
+  for (const o of overrides) {
+    if (o === "A" || o === "B") {
+      out.push(o);
+    } else {
+      out.push(cursor);
+      cursor = cursor === "A" ? "B" : "A";
+    }
+  }
+  return out;
 }
 export interface OrderOptions {
   /** 每个任务的开火时刻（秒），'time' 模式用 */
@@ -163,5 +177,6 @@ export function orderMissions(
 
   return [...orderedPending, ...done];
 }
+
 
 
