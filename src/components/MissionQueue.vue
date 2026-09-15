@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { storeToRefs } from 'pinia';
 import { computed, onUnmounted, ref, watch } from 'vue';
 import { AMMO_LIST } from '@/domain/ammo';
 import { ALL_CHARGES, type Charge } from '@/domain/ballistics';
@@ -6,7 +7,7 @@ import { formatElevation } from '@/domain/format';
 import { addClock, formatClockTime, formatDuration, parseClockTime } from '@/domain/gameClock';
 import { missionElevation, missionFlightTime, type FireMission } from '@/domain/fireMission';
 import { bearingDeg, distanceKm, formatGridRef, parseGridRef } from '@/domain/grid';
-import { assignBarrels, orderMissions, totalTraverseDeg } from '@/domain/missionOrder';
+import { totalTraverseDeg } from '@/domain/missionOrder';
 import { buildTotPlan, type BarrelId } from '@/domain/tot';
 import { useMissionStore, useSettingsStore } from '@/stores';
 
@@ -51,42 +52,11 @@ const nextMissionId = computed(() => {
 
 /* --------------------------- 显示排序 --------------------------- */
 
-/** 当前炮口方位：取最近一次击发任务的方位，作为「最小回转」的起头 */
-const currentBearing = computed(() => {
-  const fired = store.missions
-    .filter((x) => x.status !== 'planned' && x.firedAt !== null && x.bearingDeg !== null)
-    .sort((a, b) => (b.firedAt as number) - (a.firedAt as number));
-  return fired[0]?.bearingDeg ?? undefined;
-});
-
-/** 未击发自动置顶；组内顺序由排序模式决定 */
-const orderedMissions = computed(() => {
-  const fireMap = new Map<string, number>();
-  for (const s of plan.value.steps) fireMap.set(s.missionId, s.fireClockSec);
-  return orderMissions(store.missions, settings.sortMode, {
-    fireClockSecById: fireMap,
-    currentBearing: currentBearing.value,
-  });
-});
-
-const pendingMissions = computed(() =>
-  orderedMissions.value.filter((x) => x.status === 'planned' || x.status === 'loaded'),
-);
-
-
-/* --------------------------- 双管轮转 --------------------------- */
-
 /**
- * 炮位标识：待击发序列第 1、3、5… 条给 A 管，第 2、4、6… 条给 B 管。
- * 只表示「哪根管子负责这一发」，不影响射击顺序。
+ * 队列派生数据（排序 + 炮位分配）全部来自 store —— 单一数据源。
+ * 炮位面板用的是同一份，所以手动改炮位两边永远一致。
  */
-const barrelByMission = computed(() => {
-  const list = pendingMissions.value;
-  const assigned = assignBarrels(list.map((m) => m.barrelOverride));
-  const map = new Map<string, BarrelId>();
-  list.forEach((m, i) => map.set(m.id, assigned[i]!));
-  return map;
-});
+const { orderedMissions, pendingMissions, barrelByMission, currentBearing } = storeToRefs(store);
 
 /** 点炮位标识：指定该管；再点一次取消，回到自动交替 */
 function toggleBarrel(mission: FireMission, which: BarrelId): void {

@@ -1,52 +1,18 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import type { BarrelId } from "@/domain/constants";
+import { storeToRefs } from "pinia";
 import { formatElevation } from "@/domain/format";
 import { missionElevation, type FireMission } from "@/domain/fireMission";
 import { formatClockTime } from "@/domain/gameClock";
-import { assignBarrels, orderMissions } from "@/domain/missionOrder";
-import { fireClockSecMap } from "@/domain/tot";
 import { useMissionStore, useSettingsStore } from "@/stores";
 
 const store = useMissionStore();
 const settings = useSettingsStore();
 
-/** 未击发序列（与队列同序） */
-const pending = computed(() => {
-  const ordered = orderMissions(store.missions, settings.sortMode, {
-    fireClockSecById: fireClockSecMap(store.missions),
-  });
-  return ordered.filter((m) => m.status === "planned" || m.status === "loaded");
-});
-
-const fireMap = computed(() => fireClockSecMap(store.missions));
-
-interface BarrelSlot {
-  id: BarrelId;
-  /** 在待击发序列里的位次；空槽为 0 */
-  seq: number;
-  mission: FireMission | null;
-  fireClockSec: number | null;
-}
-
 /**
- * 炮位占用：按每个任务实际分配到的炮位取。
- * 用的是和卡片标识同一个 assignBarrels（手动优先、其余交替填补），
+ * 炮位占用直接来自 store —— 和队列卡片是同一份数据，
  * 所以点卡片上的 A/B 标识，这里会实时跟着变。
  */
-const barrels = computed<BarrelSlot[]>(() => {
-  const list = pending.value;
-  const assigned = assignBarrels(list.map((m) => m.barrelOverride));
-
-  const slot = (id: BarrelId): BarrelSlot => {
-    const i = assigned.indexOf(id);
-    if (i < 0) return { id, seq: 0, mission: null, fireClockSec: null };
-    const mission = list[i]!;
-    return { id, seq: i + 1, mission, fireClockSec: fireMap.value.get(mission.id) ?? null };
-  };
-
-  return [slot("A"), slot("B")];
-});
+const { barrels } = storeToRefs(store);
 
 function labelOf(m: FireMission): string {
   return m.label || m.gridRef || "未命名";

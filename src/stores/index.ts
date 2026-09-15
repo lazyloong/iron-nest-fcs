@@ -1,8 +1,9 @@
 import { defineStore } from "pinia";
 import { computed, ref, watch } from "vue";
 import type { Precision } from "@/domain/format";
-import type { SortMode } from "@/domain/missionOrder";
+import { assignBarrels, orderMissions, type SortMode } from "@/domain/missionOrder";
 import { createMission, type FireMission, type MissionStatus } from "@/domain/fireMission";
+import { fireClockSecMap, type BarrelId } from "@/domain/tot";
 
 const SETTINGS_KEY = "iron-nest-fcs.settings.v1";
 const MISSIONS_KEY = "iron-nest-fcs.missions.v1";
@@ -113,6 +114,75 @@ export const useMissionStore = defineStore("missions", () => {
     missions.value.filter((m) => m.impactClockSec !== null),
   );
 
+  /* ---------------------------------------------------------------------
+   * 队列派生数据
+   *
+   * 这些**只在这里算一次**：队列卡片和炮位面板都从这里拿，
+   * 两边不再各算一遍（以前各算一遍，手动改炮位后面板就不跟着变）。
+   * ------------------------------------------------------------------- */
+
+  const settings = useSettingsStore();
+
+  /** 当前炮口方位：取最近一次击发任务的方位，作为「最小回转」的起头 */
+  const currentBearing = computed(() => {
+    const fired = missions.value
+      .filter((m) => m.status !== "planned" && m.firedAt !== null && m.bearingDeg !== null)
+      .sort((a, b) => (b.firedAt as number) - (a.firedAt as number));
+    return fired[0]?.bearingDeg ?? undefined;
+  });
+
+  /** 每个任务的开火时刻（怀表秒） */
+  const fireClockSecById = computed(() => fireClockSecMap(missions.value));
+
+  /** 按当前排序模式排好的完整队列 */
+  const orderedMissions = computed(() =>
+    orderMissions(missions.value, settings.sortMode, {
+      fireClockSecById: fireClockSecById.value,
+      currentBearing: currentBearing.value,
+    }),
+  );
+
+  /** 未击发序列（队列卡片与炮位面板共用） */
+  const pendingMissions = computed(() =>
+    orderedMissions.value.filter((m) => m.status === "planned" || m.status === "loaded"),
+  );
+
+  /** 每个未击发任务分配到的炮位（手动优先、其余交替填补） */
+  const barrelByMission = computed(() => {
+    const list = pendingMissions.value;
+    const assigned = assignBarrels(list.map((m) => m.barrelOverride));
+    const map = new Map<string, BarrelId>();
+    list.forEach((m, i) => map.set(m.id, assigned[i]!));
+    return map;
+  });
+
+  /** 两根炮位当前占用的任务 + 开火时刻 */
+  const barrels = computed(() => {
+    const list = pendingMissions.value;
+    const assigned = assignBarrels(list.map((m) => m.barrelOverride));
+
+    const slot = (id: BarrelId) => {
+      const i = assigned.indexOf(id);
+      if (i < 0) {
+        return {
+          id,
+          seq: 0,
+          mission: null as FireMission | null,
+          fireClockSec: null as number | null,
+        };
+      }
+      const mission = list[i]!;
+      return {
+        id,
+        seq: i + 1,
+        mission,
+        fireClockSec: fireClockSecById.value.get(mission.id) ?? null,
+      };
+    };
+
+    return [slot("A"), slot("B")];
+  });
+
   function add(mission: FireMission): FireMission {
     missions.value.push(mission);
     selectedId.value = mission.id;
@@ -205,6 +275,12 @@ export const useMissionStore = defineStore("missions", () => {
     selectedId,
     selected,
     scheduled,
+    currentBearing,
+    fireClockSecById,
+    orderedMissions,
+    pendingMissions,
+    barrelByMission,
+    barrels,
     add,
     addNew,
     update,
@@ -219,4 +295,5 @@ export const useMissionStore = defineStore("missions", () => {
     importJson,
   };
 });
+
 
