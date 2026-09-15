@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { AMMO_LIST } from "@/domain/ammo";
-import { formatElevation } from "@/domain/format";
-import { missionElevation, missionFlightTime, type FireMission } from "@/domain/fireMission";
 import type { BarrelId } from "@/domain/constants";
+import { formatElevation } from "@/domain/format";
+import { missionElevation, type FireMission } from "@/domain/fireMission";
+import { formatClockTime } from "@/domain/gameClock";
 import { assignBarrels, orderMissions } from "@/domain/missionOrder";
 import { fireClockSecMap } from "@/domain/tot";
 import { useMissionStore, useSettingsStore } from "@/stores";
@@ -19,35 +19,41 @@ const pending = computed(() => {
   return ordered.filter((m) => m.status === "planned" || m.status === "loaded");
 });
 
+const fireMap = computed(() => fireClockSecMap(store.missions));
+
 interface BarrelSlot {
   id: BarrelId;
   /** 在待击发序列里的位次；空槽为 0 */
   seq: number;
   mission: FireMission | null;
+  fireClockSec: number | null;
 }
 
 /**
- * 炮位占用：**按每个任务实际分配到的炮位取**。
+ * 炮位占用：按每个任务实际分配到的炮位取。
  * 用的是和卡片标识同一个 assignBarrels（手动优先、其余交替填补），
  * 所以点卡片上的 A/B 标识，这里会实时跟着变。
  */
 const barrels = computed<BarrelSlot[]>(() => {
   const list = pending.value;
   const assigned = assignBarrels(list.map((m) => m.barrelOverride));
+
   const slot = (id: BarrelId): BarrelSlot => {
     const i = assigned.indexOf(id);
-    return i < 0 ? { id, seq: 0, mission: null } : { id, seq: i + 1, mission: list[i]! };
+    if (i < 0) return { id, seq: 0, mission: null, fireClockSec: null };
+    const mission = list[i]!;
+    return { id, seq: i + 1, mission, fireClockSec: fireMap.value.get(mission.id) ?? null };
   };
+
   return [slot("A"), slot("B")];
 });
 
-function ammoName(id: string | null): string {
-  if (id === null) return "未选弹";
-  return AMMO_LIST.find((a) => a.id === id)?.name ?? id;
-}
-
 function labelOf(m: FireMission): string {
   return m.label || m.gridRef || "未命名";
+}
+
+function bearingText(m: FireMission): string {
+  return m.bearingDeg === null ? "—" : m.bearingDeg.toFixed(1) + "°";
 }
 </script>
 
@@ -61,19 +67,31 @@ function labelOf(m: FireMission): string {
 
       <template v-if="b.mission">
         <div class="target">{{ labelOf(b.mission) }}</div>
-        <div class="nums">
-          <span>{{ ammoName(b.mission.ammoId) }}</span>
-          <span>{{ b.mission.charge }} 档</span>
-          <span class="elev">{{ formatElevation(missionElevation(b.mission), settings.precision) }}°</span>
-        </div>
-        <div class="sub">
-          距离 {{ b.mission.distanceKm.toFixed(1) }} km · 飞行 {{ missionFlightTime(b.mission).toFixed(1) }} s
+
+        <div class="grid">
+          <div class="cell">
+            <i>仰角</i>
+            <b>{{ formatElevation(missionElevation(b.mission), settings.precision) }}°</b>
+          </div>
+          <div class="cell">
+            <i>方位</i>
+            <b>{{ bearingText(b.mission) }}</b>
+          </div>
+          <div class="cell">
+            <i>装药</i>
+            <b>{{ b.mission.charge }} 档</b>
+          </div>
+          <div class="cell">
+            <i>开火</i>
+            <b class="fire">{{ b.fireClockSec === null ? "—" : formatClockTime(b.fireClockSec) }}</b>
+          </div>
         </div>
       </template>
+
       <div v-else class="target dim">空</div>
     </div>
   </div>
-  <p class="hint">炮位按队列顺序自动轮转，不需要手动装填</p>
+  <p class="hint">炮位按队列顺序自动轮转，点卡片上的 A/B 可手动指定</p>
 </template>
 
 <style scoped>
@@ -86,7 +104,7 @@ function labelOf(m: FireMission): string {
   background: #0f150f;
   border: 1px solid var(--line);
   border-radius: 5px;
-  padding: 9px 12px;
+  padding: 9px 12px 10px;
 }
 .barrel.empty {
   opacity: 0.45;
@@ -106,8 +124,8 @@ function labelOf(m: FireMission): string {
   font-size: 11px;
 }
 .target {
-  font-size: 15px;
-  margin: 6px 0 4px;
+  font-size: 14px;
+  margin: 5px 0 7px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -115,30 +133,33 @@ function labelOf(m: FireMission): string {
 .target.dim {
   color: var(--dim);
   font-size: 13px;
+  margin-top: 8px;
 }
-.nums {
+
+.grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 10px;
+}
+.cell {
   display: flex;
-  gap: 12px;
-  color: var(--dim);
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
 }
-.nums .elev {
+.cell i {
+  font-style: normal;
+  color: var(--dim);
+  font-size: 11px;
+  min-width: 24px;
+}
+.cell b {
   color: var(--ok);
+  font-size: 16px;
   font-weight: 600;
-}
-.sub {
-  margin-top: 4px;
-  color: var(--dim);
-  font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
-.hint {
-  margin: 8px 0 0;
-  color: var(--dim);
-  font-size: 11px;
+.cell b.fire {
+  color: var(--amber);
 }
 </style>
-
-
-

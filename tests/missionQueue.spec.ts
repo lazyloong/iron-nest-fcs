@@ -415,3 +415,53 @@ describe("炮位面板跟随手动指定", () => {
     expect(targets[1]).toBe("空");
   });
 });
+
+describe("炮位面板只放四个核心数", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    setActivePinia(createPinia());
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("只显示 仰角 / 方位 / 装药 / 开火，不显示距离、飞行、弹种", async () => {
+    const settings = useSettingsStore();
+    settings.soundEnabled = false;
+    settings.precision = 2;
+    const store = useMissionStore();
+    store.addNew({ distanceKm: 10, bearingDeg: 84.2, charge: 5, ammoId: "HE" });
+    store.update(store.missions[0]!.id, { impactClockSec: 19 * 3600 + 26 * 60 + 26 });
+
+    const panel = mount(BarrelPanel);
+    await panel.vm.$nextTick();
+
+    // 四个标签，顺序固定
+    expect(panel.findAll(".cell i").map((e) => e.text())).toEqual(["仰角", "方位", "装药", "开火"]);
+
+    // 第 1 条在 A 管：距离 10 / 5 档 → 仰角 24.00°
+    // 开火 = 经过 19:26:26 − 飞行 15.4 秒 = 19:26:10
+    const slotA = panel.findAll(".barrel")[0]!;
+    expect(slotA.findAll(".cell b").map((e) => e.text())).toEqual(["24.00°", "84.2°", "5 档", "19:26:10"]);
+
+    // 其他数据不该出现
+    const html = panel.html();
+    for (const gone of ["距离", "飞行", "弹种", "km"]) {
+      expect(html).not.toContain(gone);
+    }
+  });
+
+  it("没填经过时刻时开火列显示破折号", async () => {
+    const settings = useSettingsStore();
+    settings.soundEnabled = false;
+    const store = useMissionStore();
+    store.addNew({ distanceKm: 10, bearingDeg: 84.2 });
+    const panel = mount(BarrelPanel);
+    await panel.vm.$nextTick();
+
+    const cells = panel.findAll(".barrel")[0]!.findAll(".cell b");
+    expect(cells[3]!.text()).toBe("—");
+  });
+});
+
